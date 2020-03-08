@@ -28,33 +28,38 @@ Connect-AzAccount
 # Create resource group
 $ResourceGroup = New-AzResourceGroup -Name $ResourceGroupName -Location $Location
 
-# Create DNS Zone
+#region Create DNS Zone
 $DNSZone = New-AzDnsZone -Name $DNSZoneRootDomain -ResourceGroupName $ResourceGroupName
-
 # Retrieve DNS server names for the NS records
 $DNSZone | Select-Object -ExpandProperty NameServers
+# Add those to your custom DNS zone
+#endregion
 
-# BLOB Storage to store the Posh-ACME configuration data
+#region BLOB Storage to store the Posh-ACME configuration data
 New-AzStorageAccount -Name $BlobStorageName -ResourceGroupName $ResourceGroupName -Location $Location -Kind StorageV2 -SkuName Standard_LRS -EnableHttpsTrafficOnly $true
 $storageAccountKey = Get-AzStorageAccountKey -Name $BlobStorageName -ResourceGroupName $ResourceGroupName | Where-Object KeyName -eq "key1" | Select-Object -ExpandProperty Value
 $storageContext = New-AzStorageContext -StorageAccountName $BlobStorageName -StorageAccountKey $storageAccountKey
 New-AzStorageContainer -Name "posh-acme" -Context $storageContext
 
-# Create a service principal without any permissions assigned
+#SAS Token for blob access
+$SASToken = New-AzStorageContainerSASToken -Name "posh-acme" -Permission rwdl -Context $storageContext -ExpiryTime (Get-Date).AddYears(5)  -StartTime (Get-Date)
+#endregion
+
+#region Create a service principal without any permissions assigned
 $application = New-AzADApplication -DisplayName "Let's Encrypt Certificate Automation" -IdentifierUris "http://localhost"
 $spPrincipal = New-AzADServicePrincipal -ApplicationId $application.ApplicationId -Role $null -Scope $null
 $spCredential = New-AzADSpCredential -ServicePrincipalObject $spPrincipal -EndDate (Get-Date).AddYears(5)
+#endregion
 
-# Add permissions to DNS Zone
+#region Grant service principal "DNS Zone Contributor" permissions to DNS Zone
 New-AzRoleAssignment -ObjectId $spPrincipal.Id -ResourceGroupName $ResourceGroupName -ResourceName $DNSZoneRootDomain -ResourceType "Microsoft.Network/dnszones" -RoleDefinitionName "DNS Zone Contributor"
+#endregion
 
-# SAS Token for blob access
-$SASToken = New-AzStorageContainerSASToken -Name "posh-acme" -Permission rwdl -Context $storageContext -ExpiryTime (Get-Date).AddYears(5)  -StartTime (Get-Date)
-
-# Create automation account
+#region Create automation account
 New-AzAutomationAccount -ResourceGroupName $ResourceGroupName -Name $AutomationAccountName -Location $Location
+#endregion
 
-# Create certificate for Azure Automation Run As Account
+#region Create certificate for Azure Automation Run As Account
 $CertificateName = $AutomationAccountName + $CertificateAssetName
 $param = @{
     "DnsName"           = $certificateName
@@ -65,17 +70,18 @@ $param = @{
     "HashAlgorithm"     = "SHA256"
 }
 $Cert = New-SelfSignedCertificate @param
+#endregion
 
-## Export certificate to temp folder
-Add-Type -AssemblyName 'System.Web'
-$selfSignedCertPlainPassword = [System.Web.Security.Membership]::GeneratePassword(25, 5)
+#region Export certificate to temp folder
+$selfSignedCertPlainPassword = $PfxPass
 $CertPassword = ConvertTo-SecureString $selfSignedCertPlainPassword -AsPlainText -Force
 $PfxCertPath = Join-Path $env:TEMP ($CertificateName + ".pfx")
 $CerCertPath = Join-Path $env:TEMP ($CertificateName + ".cer")
 Export-PfxCertificate -Cert ("Cert:\CurrentUser\my\" + $Cert.Thumbprint) -FilePath $PfxCertPath -Password $CertPassword -Force | Write-Verbose
 Export-Certificate -Cert ("Cert:\CurrentUser\my\" + $Cert.Thumbprint) -FilePath $CerCertPath -Type CERT | Write-Verbose
+#endregion
 
-# Create Application Credential to use for authentication of RunAs Account
+#region Create Application Credential to use for authentication of RunAs Account
 $PfxCert = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @($PfxCertPath, $selfSignedCertPlainPassword)
 $param = @{
     "ApplicationId" = $application.ApplicationId
@@ -84,8 +90,9 @@ $param = @{
     "EndDate"       = $PfxCert.NotAfter
 }
 $applicationCredential = New-AzADAppCredential @param
+#endregion
 
-# Add certificate to automation account
+#region Add certificate to automation account
 $param = @{
     "ResourceGroupName"     = $ResourceGroupName
     "AutomationAccountName" = $AutomationAccountName
@@ -95,8 +102,9 @@ $param = @{
     "Exportable"            = $false
 }
 $AutomationCertificate = New-AzAutomationCertificate @param
+#endregion
 
-# Add Run As Account Connection to automation account
+#region Add Run As Account Connection to automation account
 $SubscriptionInformation = Get-AzContext | Select-Object -ExpandProperty Subscription
 $ConnectionFieldValues = @{
     "ApplicationId"         = $application.ApplicationId
@@ -112,8 +120,9 @@ $param = @{
     "ConnectionFieldValues" = $connectionFieldValues
 }
 New-AzAutomationConnection @param
+#endregion
 
-# Import the necessary module, this will take a while
+#region Deploy the necessary module, this will take a while
 function New-AutomationModule {
     [CmdletBinding()]
     param (
@@ -143,13 +152,15 @@ function New-AutomationModule {
 $NecessaryModules = @( "Az.Accounts", "Az.Resources", "Az.Storage", "Posh-ACME" )
 $NecessaryModules | New-AutomationModule
 
+
 # Test connection within a runbook and this code if you want
 # $connection = Get-AutomationConnection -Name 'AzureRunAsConnection'
 # Connect-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $connection.ApplicationID -CertificateThumbprint $connection.CertificateThumbprint
 # Get-AzResource
 # Get-Module -ListAvailable
+#endregion
 
-# Set variables
+#region Set variables
 ## Which PAServer to use
 $param = @{
     "Name"                  = "PAServer"
@@ -200,7 +211,7 @@ $param = @{
     "ResourceGroupName"     = $ResourceGroupName
 }
 New-AzAutomationVariable @param
-
+#endregion
 
 #region Deploy Runbooks to Azure Automation account
 $Runbooks = Get-ChildItem .\runbooks -Filter *.ps1

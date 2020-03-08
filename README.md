@@ -13,6 +13,10 @@ Caution: "BlobStorageName" has to be a [globally unique name](https://docs.micro
 
 The [DeployRessources.ps1](DeployRessources.ps1) is not meant to be executed as one script but is build to follow each region step for step.
 
+### Known issues
+
+The deployment of the "Az.Resources" module sometimes fails the first time. Remove it and try again.
+
 ## Presentation
 
 * [German Version](./presentation/Zertifikatsmanagement_mit_Azure_Automation_und_Lets_Encrypt.pdf) presented @ [Hamburg PowerShell Saturday 2020](https://hamburg.pssaturday.eu/)
