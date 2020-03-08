@@ -18,8 +18,8 @@ $ConnectionAssetName = "AzureRunAsConnection"
 $ConnectionTypeName = "AzureServicePrincipal"
 # This certificate is used to authenticate the Automation account to Azure
 $selfSignedCertNoOfMonthsUntilExpired = 60
-# Azure storage account have to be all lowercase
-$BlobStorageName = $BlobStorageName.ToLower()
+# Azure storage account have to be all lowercase and only contain a-z and numbers
+$BlobStorageName = $BlobStorageName.ToLower() -replace "[^a-z0-9]"
 #endregion
 
 # Connect to Azure
