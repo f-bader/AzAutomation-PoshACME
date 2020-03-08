@@ -76,9 +76,7 @@ $Cert = New-SelfSignedCertificate @param
 $selfSignedCertPlainPassword = $PfxPass
 $CertPassword = ConvertTo-SecureString $selfSignedCertPlainPassword -AsPlainText -Force
 $PfxCertPath = Join-Path $env:TEMP ($CertificateName + ".pfx")
-$CerCertPath = Join-Path $env:TEMP ($CertificateName + ".cer")
 Export-PfxCertificate -Cert ("Cert:\CurrentUser\my\" + $Cert.Thumbprint) -FilePath $PfxCertPath -Password $CertPassword -Force | Write-Verbose
-Export-Certificate -Cert ("Cert:\CurrentUser\my\" + $Cert.Thumbprint) -FilePath $CerCertPath -Type CERT | Write-Verbose
 #endregion
 
 #region Create Application Credential to use for authentication of RunAs Account
