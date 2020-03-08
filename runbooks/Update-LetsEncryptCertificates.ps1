@@ -59,6 +59,25 @@ param (
 #region Initialize variables
 $StorageContainerSASToken = Get-AutomationVariable -Name 'StorageContainerSASToken'
 $BlobStorageName = Get-AutomationVariable -Name 'BlobStorageName'
+$WriteLock = Get-AutomationVariable -Name 'WriteLock'
+#endregion
+
+#region Check if WriteLock is in place and try 3 more times
+$i = 0
+while ( $WriteLock -eq $true -and $i -lt 3 ) {
+    $i++
+    Write-Output "Currently no write access is allowed ($i/3)"
+    $WaitPeriod = Get-Random -Minimum 30 -Maximum 90
+    Write-Output "Wait for $WaitPeriod seconds and try again"
+    Start-Sleep -Seconds $WaitPeriod
+    $WriteLock = Get-AutomationVariable -Name 'WriteLock'
+}
+if ( $WriteLock -eq $true ) {
+    Write-Output "Cannot get write access to the configuration file. Check if another process has crashed!"
+    throw "Cannot get write access to configuration file!"
+}
+# Set WriteLock to true
+Set-AutomationVariable -Name 'WriteLock' -Value $true
 #endregion
 
 #region Connect to Azure and retrieve access token
@@ -132,4 +151,10 @@ $GLOBAL:VerbosePreference = "SilentlyContinue"
 Compress-Archive -Path $workingDirectory -DestinationPath $env:TEMP\posh-acme.zip -CompressionLevel Fastest -Force
 Set-AzStorageBlobContent -File $env:TEMP\posh-acme.zip -Container "posh-acme" -Blob "posh-acme.zip" -BlobType Block -Context $AzStorageContext -Force | Out-Null
 Write-Output "posh-acme configuration was backed up to the storage container 'posh-acme'"
+#endregion
+
+#region Remove temporary files, folders and WriteLock
+Set-AutomationVariable -Name 'WriteLock' -Value $false
+Remove-Item -Recurse -Force $workingDirectory
+Remove-Item -Force $env:TEMP\posh-acme.zip
 #endregion

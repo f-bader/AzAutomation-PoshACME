@@ -211,6 +211,16 @@ $param = @{
     "ResourceGroupName"     = $ResourceGroupName
 }
 New-AzAutomationVariable @param
+
+$param = @{
+    "Name"                  = "WriteLock"
+    "Description"           = "If set to true no other runbook is allowed to change the posh-ACME configuration data"
+    "Value"                 = $false
+    "Encrypted"             = $false
+    "AutomationAccountName" = $AutomationAccountName
+    "ResourceGroupName"     = $ResourceGroupName
+}
+New-AzAutomationVariable @param
 #endregion
 
 #region Deploy Runbooks to Azure Automation account
